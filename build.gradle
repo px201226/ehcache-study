@@ -28,6 +28,10 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation("org.ehcache:ehcache:3.9.5")
+    implementation("javax.cache:cache-api:1.1.1")
+    // https://mvnrepository.com/artifact/net.sf.ehcache/ehcache
+    implementation group: 'net.sf.ehcache', name: 'ehcache', version: '2.9.1'
 }
 
 tasks.named('test') {

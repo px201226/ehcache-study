@@ -118,7 +118,71 @@ Ehcache에서 지원하는 데이터 저장소는 다음과 같다.
 
 `<cache>` 요소가 템플릿을 상속받아 사용할 수 있다. `uses-template` 속성을 통해 cache-template을 참조할 수 있다.
 
-### Springboot Configuration
+## 캐시 교체 정책
+
+Ehcache 2.x 버전에서는 힙 메모리에 대한 캐시 교체 정책`(LRU, LFU, FIFO)`을 지원했다. 그런데 Ehcache 3부터는 3가지 정책이 사라졌는데,
+구글링을 통해 조사해본 결과, 힙 메모리 교체 정책과 다른 계층의 교체 정책이 다를 수 있기 때문에 지원이 중단된 듯 하다.
+그래서 3 버전 기준으로는 다음 세가지 정책을 제공하고 있다.
+
+- no expiry : 캐시 매핑이 만료되지 않음
+- time-to-live : 캐시 매핑이 생성된 후 정해진 기간 후에 만료됨
+- time-to-idle : 캐시 매핑이 마지막으로 액세스한 시간 이후 정해진 기간 후에 만료됨
+
+```xml
+
+<cache alias="withExpiry">
+  <expiry>
+    <ttl unit="seconds">20</ttl>
+  </expiry>
+  <heap>100</heap>
+</cache>
+```
+
+### Custom expiry
+
+Ehcache3 은 Custom expiry 정책을 정의할 수 있다. 아래 인터페이스를 구현하는 custom policy 클래스를 구현하면 된다.
+
+```java
+public interface ExpiryPolicy<K, V> {
+
+	Duration INFINITE = Duration.ofNanos(Long.MAX_VALUE);
+	ExpiryPolicy<Object, Object> NO_EXPIRY = new ExpiryPolicy<Object, Object>() {
+		public String toString() {
+			return "No Expiry";
+		}
+
+		public Duration getExpiryForCreation(Object key, Object value) {
+			return INFINITE;
+		}
+
+		public Duration getExpiryForAccess(Object key, Supplier<?> value) {
+			return null;
+		}
+
+		public Duration getExpiryForUpdate(Object key, Supplier<?> oldValue, Object newValue) {
+			return null;
+		}
+	};
+
+	Duration getExpiryForCreation(K var1, V var2);
+
+	Duration getExpiryForAccess(K var1, Supplier<? extends V> var2);
+
+	Duration getExpiryForUpdate(K var1, Supplier<? extends V> var2, V var3);
+}
+```
+
+```xml
+
+<cache alias="withCustomExpiry">
+  <expiry>
+    <class>com.pany.ehcache.MyExpiry</class>
+  </expiry>
+  <heap>100</heap>
+</cache>
+```
+
+## Springboot Configuration
 
 Ehcache3 는 JCache 므로 아래와 같이 설정해줘야 한다.
 
@@ -177,8 +241,44 @@ public class EhcacheConfig {
 		return new JCacheCacheManager(manager);
 	}
 }
-
 ```
+
+캐싱을 적용할 메서드에 @Cacheable 어노테이션을 붙여준다.
+
+```java
+public class CacheService {
+
+	@Cacheable(cacheManager = "ehCacheManager", cacheNames = "Cache")
+	public String findById(String id) {
+		log.info("findById = {}", id);
+		return id;
+	}
+
+}
+```
+
+Cache 라는 이름으로 메서드 인자인 id 값을 key로, return 값을 value로 결과를 캐싱한다.
+@Cacheable은 다음 매개변수를 사용할 수 있다.
+
+- value / cacheName : 메서드 실행 결과가 저장될 캐시의 이름입니다.
+- key : SpEL(Spring Expression Language) 로 캐시 항목의 키입니다 . 매개변수를 지정하지 않으면 기본적으로 모든 메서드 매개변수에 대해 키가 생성됩니다.
+- keyGenerator : KeyGenerator 인터페이스를 구현하여 사용자 정의 캐시 키 생성을 허용하는 Bean의 이름입니다.
+- condition : 결과를 캐시할 시기를 지정하는 SpEL(Spring Expression Language)로서의 조건입니다.
+- unless : 결과를 캐시하지 않아야 하는 경우를 지정하는 SpEL(Spring Expression Language)로서의 조건입니다.
+
+스프링에서는 @Cacheable 말고도 @CacheEvict, @CachePut, @CacheConfig 어노테이션을 지원한다.
+기본적인 내용은 @Cacheable 과 크게 다르지 않으므로 자세한 내용은 [공식문서](https://docs.spring.io/spring-framework/docs/3.2.x/spring-framework-reference/html/cache.html)를 참조하자.
+
+
+## JSR 107 어노테이션, Spring Cache 어노테이션 비교
+
+| JSR 107 / JCache Annotations | 	Spring Cache Annotations    |
+|------------------------------|------------------------------|
+| @CacheResult                 | @Cacheable                   |
+| @CacheRemove                 | 	@CacheEvict                 |
+| @CacheRemoveAll              | @CacheEvict(allEntries=true) |
+| @CachePut                    | @CachePut                    |
+| @CacheDefaults               | @CacheConfig                 |
 
 
 
